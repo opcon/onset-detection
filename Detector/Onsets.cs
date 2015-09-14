@@ -53,13 +53,13 @@ namespace OnsetDetection
         }
 
         /// <summary>
-        /// Detects the onsets
-        /// In online mode, post_avg and post_max are set to 0
+        /// Detects the onsets <para />
+        /// In online mode, post_avg and post_max are set to 0 <para />
         /// 
-        /// Implements the peak-picking method described in:
-        /// "Evaluating the Online Capabilities of Onset Detection Methods"
-        /// Sebastian Böck, Florian Krebs and Markus Schedl
-        /// Proceedings of the 13th International Society for Music Information Retrieval Conference(ISMIR), 2012
+        /// Implements the peak-picking method described in: <para />
+        /// "Evaluating the Online Capabilities of Onset Detection Methods" <para />
+        /// Sebastian Böck, Florian Krebs and Markus Schedl <para />
+        /// Proceedings of the 13th International Society for Music Information Retrieval Conference(ISMIR), 2012 <para />
         /// </summary>
         /// <param name="threshold">threshold for peak-picking</param>
         /// <param name="combine">only report 1 onset for N milliseconds</param>
