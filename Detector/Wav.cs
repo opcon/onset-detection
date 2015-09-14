@@ -15,10 +15,11 @@ namespace OnsetDetection
     /// </summary>
     public class Wav
     {
-        public int Samplerate;
-        public int Samples;
-        public int Channels;
-        public Matrix<float> Audio;
+        public int Samplerate { get; private set; }
+        public int Samples { get; private set; }
+        public int Channels { get; private set; }
+        public Matrix<float> Audio { get; private set; }
+        public float Delay { get; set; }
 
         /// <summary>
         /// Creates a new Wav object instance of the given file
@@ -28,29 +29,55 @@ namespace OnsetDetection
         {
             //read in the audio
             var ss = CodecFactory.Instance.GetCodec(filename).ToSampleSource();
-            Samplerate = ss.WaveFormat.SampleRate;
-            Channels = ss.WaveFormat.Channels;
-            Samples = (int)ss.Length / Channels;
-            float[] buffer = new float[ss.Length];
-            ss.Read(buffer, 0, (int)ss.Length);
-
-            //load the channel data
-            Audio = DenseMatrix.Create(buffer.Length / Channels, Channels, 0);
-            for (int i = 0; i < Audio.RowCount; i++)
-            {
-                for (int j = 0; j < Audio.ColumnCount; j++)
-                {
-                    Audio[i, j] = buffer[i * Channels + j];
-                }
-            }
+            Initialise(ss);
         }
 
+        /// <summary>
+        /// Creates a new Wav object instance of the given sample source
+        /// </summary>
+        /// <param name="sampleSource">sample source to use</param>
+        public Wav(ISampleSource sampleSource)
+        {
+            Initialise(sampleSource);
+        }
+
+        /// <summary>
+        /// Creates a new Wav object of the given audio matrix and wave format information
+        /// </summary>
+        /// <param name="audio">audio data [of dimensions (channel count, sample count)] </param>
+        /// <param name="samplerate"></param>
+        /// <param name="samples"></param>
+        /// <param name="channels"></param>
         public Wav(Matrix<float> audio, int samplerate, int samples, int channels)
         {
             Audio = audio;
+            Initialise(samplerate, samples, channels);
+        }
+
+        private void Initialise(int samplerate, int samples, int channels)
+        {
             Samplerate = samplerate;
             Samples = samples;
             Channels = channels;
+            Delay = 0.0f;
+        }
+
+        private void Initialise(ISampleSource sampleSource)
+        {
+            Initialise(sampleSource.WaveFormat.SampleRate, (int)sampleSource.Length / sampleSource.WaveFormat.Channels, sampleSource.WaveFormat.Channels);
+            float[] buffer = new float[sampleSource.Length];
+            sampleSource.Read(buffer, 0, (int)sampleSource.Length);
+
+            //load the channel data
+            Audio = DenseMatrix.Create(Channels, buffer.Length / Channels, 0);
+            for (int i = 0; i < Audio.ColumnCount; i++)
+            {
+                for (int j = 0; j < Audio.RowCount; j++)
+                {
+                    Audio[j, i] = buffer[i * Channels + j];
+                }
+            }
+
         }
 
         /// <summary>
