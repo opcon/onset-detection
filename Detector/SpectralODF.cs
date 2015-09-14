@@ -100,7 +100,6 @@ namespace OnsetDetection
             //Spectral diff is the sum of all squared positive 1st order differences
             var diff = Diff(_s.Spec, true);
             diff = diff.PointwisePower(2);
-            //return Diff(_s.Spec, true).PointwisePower(2).RowSums();
             return diff.RowSums();
         }
 
