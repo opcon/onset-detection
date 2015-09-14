@@ -95,7 +95,7 @@ namespace OnsetDetection
         public void DownMix()
         {
             if (Channels > 1)
-                Audio = Matrix<float>.Build.DenseOfRowVectors(Audio.RowSums().Divide(Channels));
+                Audio = Matrix<float>.Build.DenseOfRowVectors(Audio.ColumnSums().Divide(Channels));
         }
 
         /// <summary>
