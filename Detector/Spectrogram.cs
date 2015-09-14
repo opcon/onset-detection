@@ -163,7 +163,7 @@ namespace OnsetDetection
         /// </summary>
         /// <param name="mul">multiply the magnitude spectrogram with given value</param>
         /// <param name="add">add the given value to the magnitude spectrogram</param>
-        public void Log(int mul=20, int add=1)
+        public void Log(float mul=20, float add=1)
         {
             if (add <= 0) throw new Exception("a positive value must be added before taking the logarithm");
             Spec = Spec.Map(f => (float)Math.Log10(mul * f + add), Zeros.Include);
