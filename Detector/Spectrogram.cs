@@ -3,7 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using MathNet.Numerics.LinearAlgebra;
-using MathNet.Numerics.LinearAlgebra.Complex; 
+using MathNet.Numerics.LinearAlgebra.Complex32;
+using MathNet.Numerics;
 
 namespace OnsetDetection
 {
@@ -18,7 +19,7 @@ namespace OnsetDetection
         int _frames;
         int _ffts;
         public int Bins;
-        Matrix<System.Numerics.Complex> _STFT;
+        Matrix<Complex32> _STFT;
         public Matrix<float> Phase;
         public Matrix<float> Spec;
         public Vector<float> Window;
@@ -42,7 +43,7 @@ namespace OnsetDetection
             _ffts = windowSize / 2;
             Bins = windowSize / 2; //initial number equal to ffts, can change if filters are used
             //init STFT matrix
-            _STFT = DenseMatrix.Create(_frames, _ffts, System.Numerics.Complex.Zero);
+            _STFT = DenseMatrix.Create(_frames, _ffts, Complex32.Zero);
             //create windowing function
             var cArray = wav.Audio.ToRowArrays()[0];
             Window = Vector<float>.Build.DenseOfArray(MathNet.Numerics.Window.Hann(windowSize).Select(d => (float)d).ToArray());
@@ -95,7 +96,9 @@ namespace OnsetDetection
                 //perform DFT
                 var result = signal.Map(f => (System.Numerics.Complex)f).ToArray();
                 MathNet.Numerics.IntegralTransforms.Fourier.BluesteinForward(result, MathNet.Numerics.IntegralTransforms.FourierOptions.NoScaling);
-                _STFT.SetRow(frame, result.Take(_ffts).ToArray());
+                //_STFT.SetRow(frame, result.Take(_ffts).ToArray());
+                var _newSTFTRow = result.Select(r => new Complex32((float)r.Real, (float)r.Imaginary)).Take(_ffts).ToArray();
+                _STFT.SetRow(frame, _newSTFTRow);
                 //next frame
             }
             //magnitude spectrogram
