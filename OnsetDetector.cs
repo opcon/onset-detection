@@ -1,4 +1,6 @@
-﻿using MathNet.Numerics.LinearAlgebra;
+﻿using CSCore;
+using CSCore.Codecs;
+using MathNet.Numerics.LinearAlgebra;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -12,23 +14,35 @@ namespace OnsetDetection
         private List<float> _onsets;
         private DetectorOptions _options;
         private object _lock;
+        private int _sliceCount;
+        private int _completed;
 
-        public OnsetDetector(DetectorOptions options)
+        public IProgress<string> ProgressReporter
+        {
+            get { return _progressReporter ?? new Progress<string>(); }
+            set { _progressReporter = value; }
+        }
+        IProgress<string> _progressReporter;
+
+        public OnsetDetector(DetectorOptions options, IProgress<string> progress)
         {
             _onsets = new List<float>();
             _options = options;
             _lock = new object();
+            ProgressReporter = progress;
         }
 
         public List<float> Detect(string audioFile)
         {
-            var audio = new Wav(audioFile);
-            return Detect(audio);
+            var ss = CodecFactory.Instance.GetCodec(audioFile).ToSampleSource();
+            return Detect(ss);
         } 
 
         public List<float> Detect(Wav audio)
         {
             _onsets.Clear();
+            _completed = 0;
+            _sliceCount = 0;
             _onsets = new List<float>();
             var onsets = new List<float>();
 
@@ -38,7 +52,7 @@ namespace OnsetDetection
             //init detection specific variables
             int sliceSampleSize = (int)Math.Ceiling(_options.SliceLength * audio.Samplerate); //the size of each slice's sample
             int slicePaddingSize = (int)Math.Ceiling(_options.SlicePaddingLength * audio.Samplerate);
-            int sliceCount = (int)Math.Ceiling((float)audio.Samples / sliceSampleSize); //the number of slices needed
+            _sliceCount = (int)Math.Ceiling((float)audio.Samples / sliceSampleSize); //the number of slices needed
 
             //init parallel specific variables
             var pOptions = new ParallelOptions();
@@ -46,7 +60,7 @@ namespace OnsetDetection
             ParallelLoopState loopState;
 
             List<Wav> wavSlices = new List<Wav>();
-            for (int i = 0; i < sliceCount; i++)
+            for (int i = 0; i < _sliceCount; i++)
             {
                 int baseStart = i * sliceSampleSize;
                 int adjustedStart = (baseStart - sliceSampleSize > 0) ? baseStart - slicePaddingSize : 0;
@@ -55,8 +69,70 @@ namespace OnsetDetection
                 wavSlices.Add(new Wav(audio.Audio.SubMatrix(0, 1, adjustedStart, count), audio.Samplerate, count, 1) { Delay = delay });
             }
             var pLoopResult = Parallel.ForEach<Wav>(wavSlices, pOptions, (w, state) => GetOnsets(w));
-            //while (!pLoopResult.IsCompleted) Thread.Sleep(1);
             if (!pLoopResult.IsCompleted) throw new Exception();
+
+            onsets = _onsets.OrderBy(f => f).ToList();
+            float prev = 0;
+            float combine = 0.03f;
+            List<float> ret = new List<float>();
+            for (int i = 0; i < onsets.Count; i++)
+            {
+                if (onsets[i] - prev < combine)
+                    continue;
+                prev = onsets[i];
+                ret.Add(onsets[i]);
+            }
+            return onsets;
+        }
+
+        public List<float> Detect(ISampleSource audio)
+        {
+            _onsets.Clear();
+            _completed = 0;
+            _sliceCount = 0;
+            _onsets = new List<float>();
+            var onsets = new List<float>();
+
+            //init detection specific variables
+            int sliceSampleSize = (int)Math.Ceiling(_options.SliceLength * audio.WaveFormat.SampleRate); //the size of each slice's sample
+            int slicePaddingSize = (int)Math.Ceiling(_options.SlicePaddingLength * audio.WaveFormat.SampleRate);
+            _sliceCount = (int)Math.Ceiling((float)audio.Length/audio.WaveFormat.Channels / sliceSampleSize); //the number of slices needed
+            var samples = (int)audio.Length / audio.WaveFormat.Channels;
+
+            //init parallel specific variables
+            var pOptions = new ParallelOptions();
+            if (_options.MaxDegreeOfParallelism != -1) pOptions.MaxDegreeOfParallelism = _options.MaxDegreeOfParallelism;
+            ParallelLoopState loopState;
+
+            List<Wav> wavSlices = new List<Wav>();
+            for (int i = 0; i < _sliceCount; i++)
+            {
+                int baseStart = i * sliceSampleSize;
+                int adjustedStart = (baseStart - sliceSampleSize > 0) ? baseStart - slicePaddingSize : 0;
+                int count = (sliceSampleSize + slicePaddingSize + baseStart > samples) ? samples - adjustedStart : sliceSampleSize + (baseStart - adjustedStart) + slicePaddingSize;
+                float delay = (float)adjustedStart / audio.WaveFormat.SampleRate;
+                float[] buffer = new float[count * audio.WaveFormat.Channels];
+                audio.SetPosition(TimeConverter.SampleSourceTimeConverter.ToTimeSpan(audio.WaveFormat, adjustedStart * audio.WaveFormat.Channels));
+                audio.Read(buffer, 0, count * audio.WaveFormat.Channels);
+                wavSlices.Add(new Wav(buffer, audio.WaveFormat.SampleRate, count, audio.WaveFormat.Channels) { Delay = delay });
+            }
+
+            int bucketSize = 5;
+            int bucketcount = (int)Math.Ceiling((double)wavSlices.Count / bucketSize);
+            for (int i = 0; i < bucketcount; i++)
+            {
+                int count = bucketSize;
+                if ((i + 1) * bucketSize > wavSlices.Count) count = wavSlices.Count - i * bucketSize;
+
+                if (count < 0) continue;
+
+                List<Wav> parallel = wavSlices.GetRange(i * bucketSize, count);
+                var ploopResult = Parallel.ForEach(parallel, pOptions, (w, state) => GetOnsets(w));
+                if (!ploopResult.IsCompleted) throw new Exception();
+            }
+
+            //var pLoopResult = Parallel.ForEach<Wav>(wavSlices, pOptions, (w, state) => GetOnsets(w));
+            //if (!pLoopResult.IsCompleted) throw new Exception();
 
             onsets = _onsets.OrderBy(f => f).ToList();
             float prev = 0;
@@ -76,6 +152,7 @@ namespace OnsetDetection
         {
             //construct the spectrogram
             var s = new Spectrogram(w, _options.WindowSize, _options.FPS, _options.Online, NeedPhaseInformation(_options.DetectionFunction));
+            //s.AW();
 
             //construct the filterbank
             var filt = new Filter(_options.WindowSize / 2, w.Samplerate);
@@ -99,6 +176,10 @@ namespace OnsetDetection
             {
                 _onsets.AddRange(o.Detections);
             }
+
+            GC.Collect(2, GCCollectionMode.Forced, true);
+            _completed++;
+            ProgressReporter.Report(String.Format("{0}%", Math.Round((((float)_completed / _sliceCount))*100f)));
         }
 
         private Vector<float> GetActivations(SpectralODF sODF, Detectors detectionFunction)
@@ -233,24 +314,6 @@ namespace OnsetDetection
                 };
             }
         }
-
-        //public static DetectorOptions Default()
-        //{
-        //    DetectorOptions options = new DetectorOptions();
-        //    options.SliceLength = 10.0f;
-        //    options.SlicePaddingLength = 0.01f;
-        //    options.MaxDegreeOfParallelism = -1;
-        //    options.ActivationThreshold = 5f;
-        //    options.MinimumTimeDelta = 30f;
-        //    options.WindowSize = 2048;
-        //    options.FPS = 200;
-        //    options.Online = true;
-        //    options.DetectionFunction = Detectors.SF;
-        //    options.Log = true;
-        //    options.LogMultiplier = 1;
-        //    options.LogAdd = 1;
-        //    return options;
-        //}
     }
 
     public enum Detectors
