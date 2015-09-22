@@ -54,6 +54,21 @@ namespace OnsetDetection
             Initialise(samplerate, samples, channels);
         }
 
+        /// <summary>
+        /// Creates a new Wav object of the given audio matrix and wave format information
+        /// </summary>
+        /// <param name="audio">audio data [of dimensions (channel count, sample count)] </param>
+        /// <param name="samplerate"></param>
+        /// <param name="samples"></param>
+        /// <param name="channels"></param>
+        public Wav(float[] audio, int samplerate, int samples, int channels)
+        {
+            Initialise(samplerate, samples, channels);
+            LoadAudioData(audio);
+            DownMix();
+        }
+
+
         private void Initialise(int samplerate, int samples, int channels)
         {
             Samplerate = samplerate;
@@ -67,7 +82,12 @@ namespace OnsetDetection
             Initialise(sampleSource.WaveFormat.SampleRate, (int)sampleSource.Length / sampleSource.WaveFormat.Channels, sampleSource.WaveFormat.Channels);
             float[] buffer = new float[sampleSource.Length];
             sampleSource.Read(buffer, 0, (int)sampleSource.Length);
+            LoadAudioData(buffer);
 
+        }
+
+        private void LoadAudioData(float[] buffer)
+        {
             //load the channel data
             Audio = DenseMatrix.Create(Channels, buffer.Length / Channels, 0);
             for (int i = 0; i < Audio.ColumnCount; i++)
@@ -77,7 +97,6 @@ namespace OnsetDetection
                     Audio[j, i] = buffer[i * Channels + j];
                 }
             }
-
         }
 
         /// <summary>
