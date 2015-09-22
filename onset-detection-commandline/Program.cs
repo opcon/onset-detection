@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -22,91 +23,65 @@ namespace OnsetDetection
             var file = of.FileName;
             _lock = new object();
             combinedOnsets = new List<float>();
-            //var onsets = DetectOnsets(file);
-            var onsetDetector = new OnsetDetector(DetectorOptions.Default);
+
+            //TestSpeed(file);
+            var options = DetectorOptions.Default;
+            options.ActivationThreshold = 10;
+            var onsetDetector = new OnsetDetector(options, null);
             var onsets = onsetDetector.Detect(file);
-            //List<Task> tasks = new List<Task>();
-            //Console.WriteLine("Analyzing Onsets");
-            //var baseWav = new Wav(@"D:\Patrick\Music\My Music\Chet Faker\Built On Glass\Chet Faker - Gold.flac");
-            //baseWav.DownMix();
-            //int sampleSize = MAXAUDIOSLICELENGTH * baseWav.Samplerate;
-            //int sliceCount = (int)Math.Ceiling((float)baseWav.Samples / sampleSize);
-            //for (int i = 0; i < sliceCount; i++)
-            //{
-            //    Wav w;
-            //    int start = i * sampleSize;
-            //    int count = (start + sampleSize > baseWav.Samples) ? baseWav.Samples - start : (sampleSize);
-            //    float delay = (float)start / baseWav.Samplerate;
-            //    w = new Wav(baseWav.Audio.SubMatrix(0, 1, start, count), baseWav.Samplerate, count, 1);
-            //    tasks.Add(Task.Run(() => GetOnsets(w, delay)));
-            //}
-            //Task.WaitAll(tasks.ToArray());
+
             combinedOnsets = onsets;
+            GC.Collect(2, GCCollectionMode.Forced, true);
             combinedOnsets = combinedOnsets.OrderBy(f => f).ToList();
-            File.WriteAllLines("Chet Faker - Gold_onsets.csv", combinedOnsets.Select(f => f.ToString()).ToArray());
+            File.WriteAllLines("Strome - Papaoutai_onsets.csv", combinedOnsets.Select(f => f.ToString()).ToArray());
         }
 
-        //private static void GetOnsets(Wav w)
-        //{
-        //    var s = new Spectrogram(w, 2048, 200, true, false);
-        //    var filt = new Filter(2048 / 2, w.Samplerate);
-        //    s.Filter(filt.Filterbank);
-        //    s.Log(1, 1);
-        //    var sodf = new SpectralODF(s);
-        //    var act = sodf.SF();
-        //    var o = new Onsets(act, 200);
-        //    o.Detect(5f, delay: w.Delay * 1000);
-        //    lock (_lock)
-        //    {
-        //        combinedOnsets.AddRange(o.Detections);
-        //    }
-        //}
+        public static void TestSpeed(string file)
+        {
+            Dictionary<float, float> Times = new Dictionary<float, float>();
+            OnsetDetector onsetDetector;
+            Stopwatch watch;
+            int warmup = 5;
+            int repeats = 3;
+            float startSliceLength = 0.5f; //500 milliseconds
+            float endSliceLength = 18; //5 seconds
+            float step = 0.5f;
 
-        //static List<float> DetectOnsets(string audioFile)
-        //{
-        //    var onsets = new List<float>();
+            //warmup
+            for (int i = 0; i < warmup; i++)
+            {
+                Console.WriteLine("Warming up, number {0} out of {1}", i+1, warmup);
+                onsetDetector = new OnsetDetector(DetectorOptions.Default, null);
+                onsetDetector.Detect(file);
+            }
 
-        //    //Load audio file
-        //    var audio = new Wav(audioFile);
+            //trials
+            for (float slice = startSliceLength; slice < endSliceLength; slice += step) 
+            {
+                Console.WriteLine("Using slice length {0}", slice);
+                var options = DetectorOptions.Default;
+                options.SliceLength = slice;
+                float time = 0.0f;
+                watch = new Stopwatch();
 
-        //    //downmix the audio file
-        //    audio.DownMix();
+                for (int k = 0; k < repeats; k++)
+                {
+                    Console.WriteLine("Beginning trial {0}", k);
+                    watch.Restart();
+                    onsetDetector = new OnsetDetector(options, null);
+                    onsetDetector.Detect(file);
+                    watch.Stop();
+                    time += watch.ElapsedMilliseconds;
+                }
 
-        //    //init detection specific variables
-        //    int maxAudioSliceLength = 10; //the length of an audio slice in seconds
-        //    float slicePaddingLength = 0.01f; //the padding of an audio slice in seconds;
-        //    int sliceSampleSize = maxAudioSliceLength * audio.Samplerate; //the size of each slice's sample
-        //    int slicePaddingSize = (int)Math.Ceiling(slicePaddingLength * audio.Samplerate);
-        //    int sliceCount = (int)Math.Ceiling((float)audio.Samples / sliceSampleSize); //the number of slices needed
-
-        //    //init parallel specific variables
-        //    var options = new ParallelOptions();
-        //    ParallelLoopState loopState;
-
-        //    List<Wav> wavSlices = new List<Wav>();
-        //    for (int i = 0; i < sliceCount; i++)
-        //    {
-        //        int baseStart = i * sliceSampleSize;
-        //        int adjustedStart = (baseStart - sliceSampleSize > 0) ? baseStart - slicePaddingSize : 0;
-        //        int count = (sliceSampleSize + slicePaddingSize + baseStart > audio.Samples) ? audio.Samples - adjustedStart : sliceSampleSize + (baseStart - adjustedStart) + slicePaddingSize;
-        //        float delay = (float)adjustedStart / audio.Samplerate;
-        //        wavSlices.Add(new Wav(audio.Audio.SubMatrix(0, 1, adjustedStart, count), audio.Samplerate, count, 1) { Delay = delay });
-        //    }
-        //    var pLoopResult = Parallel.ForEach<Wav>(wavSlices, options, (w, state) => GetOnsets(w));
-        //    while (!pLoopResult.IsCompleted) Thread.Sleep(1);
-
-        //    onsets = combinedOnsets.OrderBy(f => f).ToList();
-        //    float prev = 0;
-        //    float combine = 0.03f;
-        //    List<float> ret = new List<float>();
-        //    for (int i = 0; i < onsets.Count; i++)
-        //    {
-        //        if (onsets[i] - prev < combine)
-        //            continue;
-        //        prev = onsets[i];
-        //        ret.Add(onsets[i]);
-        //    }
-        //    return onsets;
-        //}
+                time /= repeats;
+                Times.Add(slice, time);
+            }
+            foreach (var time in Times)
+            {
+                Console.WriteLine("Slice Length (s):{0}\tTime Taken:{1} ms, {2} s", time.Key, time.Value, time.Value / 1000);
+            }
+            Console.ReadLine();
+        }
     }
 }
