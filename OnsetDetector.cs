@@ -152,6 +152,9 @@ namespace OnsetDetection
         {
             //construct the spectrogram
             var s = new Spectrogram(w, _options.WindowSize, _options.FPS, _options.Online, NeedPhaseInformation(_options.DetectionFunction));
+
+            //perform adaptive whitening
+            if (_options.AdaptiveWhitening) s.AW(_options.AWFloor, _options.AWRelax);
             //s.AW();
 
             //construct the filterbank
@@ -293,6 +296,21 @@ namespace OnsetDetection
         /// </summary>
         public float LogAdd;
 
+        /// <summary>
+        /// Whether to apply adaptive whitening. Default is false
+        /// </summary>
+        public bool AdaptiveWhitening;
+
+        /// <summary>
+        /// Floor value for adaptive whitening. Default is 5.0f
+        /// </summary>
+        public float AWFloor;
+
+        /// <summary>
+        /// Relaxation time for adaptive whitening. Default is 10.0f
+        /// </summary>
+        public float AWRelax;
+
         public static DetectorOptions Default
         {
             get
@@ -310,7 +328,10 @@ namespace OnsetDetection
                     DetectionFunction = Detectors.SF,
                     Log = true,
                     LogMultiplier = 1,
-                    LogAdd = 1
+                    LogAdd = 1,
+                    AdaptiveWhitening = false,
+                    AWFloor = 5.0f,
+                    AWRelax = 10.0f
                 };
             }
         }

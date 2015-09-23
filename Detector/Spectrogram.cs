@@ -120,7 +120,7 @@ namespace OnsetDetection
         /// "Adaptive Whitening For Improved Real-time Audio Onset Detection"
         /// Dan Stowell and Mark Plumbley
         /// Proceedings of the International Computer Music Conference(ICMC), 2007
-        public void AW(int floor=5, int relaxation=10)
+        public void AW(float floor=5, float relaxation=10)
         {
             var memCoeff = (float)Math.Pow(10.0, (-6 * relaxation / _fps));
             var P = Matrix<float>.Build.SameAs(Spec);
