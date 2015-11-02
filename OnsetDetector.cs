@@ -38,53 +38,6 @@ namespace OnsetDetection
             return Detect(ss);
         } 
 
-        public List<float> Detect(Wav audio)
-        {
-            _onsets.Clear();
-            _completed = 0;
-            _sliceCount = 0;
-            _onsets = new List<float>();
-            var onsets = new List<float>();
-
-            //downmix the audio file
-            audio.DownMix();
-
-            //init detection specific variables
-            int sliceSampleSize = (int)Math.Ceiling(_options.SliceLength * audio.Samplerate); //the size of each slice's sample
-            int slicePaddingSize = (int)Math.Ceiling(_options.SlicePaddingLength * audio.Samplerate);
-            _sliceCount = (int)Math.Ceiling((float)audio.Samples / sliceSampleSize); //the number of slices needed
-
-            //init parallel specific variables
-            var pOptions = new ParallelOptions();
-            if (_options.MaxDegreeOfParallelism != -1) pOptions.MaxDegreeOfParallelism = _options.MaxDegreeOfParallelism;
-            ParallelLoopState loopState;
-
-            List<Wav> wavSlices = new List<Wav>();
-            for (int i = 0; i < _sliceCount; i++)
-            {
-                int baseStart = i * sliceSampleSize;
-                int adjustedStart = (baseStart - sliceSampleSize > 0) ? baseStart - slicePaddingSize : 0;
-                int count = (sliceSampleSize + slicePaddingSize + baseStart > audio.Samples) ? audio.Samples - adjustedStart : sliceSampleSize + (baseStart - adjustedStart) + slicePaddingSize;
-                float delay = (float)adjustedStart / audio.Samplerate;
-                wavSlices.Add(new Wav(audio.Audio.SubMatrix(0, 1, adjustedStart, count), audio.Samplerate, count, 1) { Delay = delay });
-            }
-            var pLoopResult = Parallel.ForEach<Wav>(wavSlices, pOptions, (w, state) => GetOnsets(w));
-            if (!pLoopResult.IsCompleted) throw new Exception();
-
-            onsets = _onsets.OrderBy(f => f).ToList();
-            float prev = 0;
-            float combine = 0.03f;
-            List<float> ret = new List<float>();
-            for (int i = 0; i < onsets.Count; i++)
-            {
-                if (onsets[i] - prev < combine)
-                    continue;
-                prev = onsets[i];
-                ret.Add(onsets[i]);
-            }
-            return onsets;
-        }
-
         public List<float> Detect(ISampleSource audio)
         {
             _onsets.Clear();
