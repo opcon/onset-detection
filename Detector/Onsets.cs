@@ -15,6 +15,7 @@ namespace OnsetDetection
         int _fps;
         bool _online;
         public List<float> Detections;
+        public List<float> Amplitudes;
         private float _lastOnset;
         public float LastOnset { get { return _lastOnset; } }
 
@@ -48,6 +49,7 @@ namespace OnsetDetection
             _fps = fps; //framrate of the activation function
             _online = online; //online peak-picking
             Detections = null; //list of detected onsets (in seconds)
+            Amplitudes = null;
             //activations are given as an array
             _activations = activations;
         }
@@ -87,6 +89,7 @@ namespace OnsetDetection
             delay /= 1000f;
             //init detections
             Detections = new List<float>();
+            Amplitudes = new List<float>();
             //moving maximum
             var maxLength = (int)(preMax + postMax + 1);
             var maxOrigin = (int)Math.Floor((preMax - postMax) / 2);
@@ -98,7 +101,9 @@ namespace OnsetDetection
             //detections are activation equal to the maximum
             var detections = _activations.PointwiseMultiply(_activations.Map2((a, mmax) => (Math.Abs(a - mmax) < float.Epsilon) ? 1 : 0, movMax));
             //detections must be greater or equal than the moving average + threshold
+            var mask = detections.Map2((d, mavg) => (d >= (mavg + threshold)) ? 1 : 0, movAvg);
             detections = detections.PointwiseMultiply(detections.Map2((d, mavg) => (d >= (mavg + threshold)) ? 1 : 0, movAvg));
+            var detectionAmplitudes = detections.Subtract(movAvg.Add(threshold)).PointwiseMultiply(mask);
             //convert detected onsets to a list of timestamps
             _lastOnset = lastOnset;
             for (int i = 0; i < detections.Count; i++)
@@ -109,6 +114,7 @@ namespace OnsetDetection
                 if (onset > _lastOnset + combine)
                 {
                     Detections.Add(onset);
+                    Amplitudes.Add(detectionAmplitudes[i]);
                     //save the last reported onset
                     _lastOnset = onset;
                 }

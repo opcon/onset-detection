@@ -12,6 +12,7 @@ namespace OnsetDetection
     public class OnsetDetector
     {
         private List<float> _onsets;
+        private List<float> _amplitudes;
         private DetectorOptions _options;
         private object _lock;
         private int _sliceCount;
@@ -27,24 +28,26 @@ namespace OnsetDetection
         public OnsetDetector(DetectorOptions options, IProgress<string> progress)
         {
             _onsets = new List<float>();
+            _amplitudes = new List<float>();
             _options = options;
             _lock = new object();
             ProgressReporter = progress;
         }
 
-        public List<float> Detect(string audioFile)
+        public List<Onset> Detect(string audioFile)
         {
             var ss = CodecFactory.Instance.GetCodec(audioFile).ToSampleSource();
             return Detect(ss);
         } 
 
-        public List<float> Detect(ISampleSource audio)
+        public List<Onset> Detect(ISampleSource audio)
         {
             _onsets.Clear();
             _completed = 0;
             _sliceCount = 0;
             _onsets = new List<float>();
-            var onsets = new List<float>();
+            _amplitudes = new List<float>();
+            var onsets = new List<Onset>();
 
             //init detection specific variables
             int sliceSampleSize = (int)Math.Ceiling(_options.SliceLength * audio.WaveFormat.SampleRate); //the size of each slice's sample
@@ -87,18 +90,20 @@ namespace OnsetDetection
             //var pLoopResult = Parallel.ForEach<Wav>(wavSlices, pOptions, (w, state) => GetOnsets(w));
             //if (!pLoopResult.IsCompleted) throw new Exception();
 
-            onsets = _onsets.OrderBy(f => f).ToList();
+            onsets = _onsets.Zip(_amplitudes, (onset, amplitude) => new Onset { OnsetTime = onset, OnsetAmplitude = amplitude }).ToList();
+            onsets = onsets.OrderBy(f => f.OnsetTime).ToList();
+
             float prev = 0;
             float combine = 0.03f;
-            List<float> ret = new List<float>();
+            var ret = new List<Onset>();
             for (int i = 0; i < onsets.Count; i++)
             {
-                if (onsets[i] - prev < combine)
+                if (onsets[i].OnsetTime - prev < combine)
                     continue;
-                prev = onsets[i];
+                prev = onsets[i].OnsetTime;
                 ret.Add(onsets[i]);
             }
-            return onsets;
+            return ret;
         }
 
         private void GetOnsets(Wav w)
@@ -131,6 +136,7 @@ namespace OnsetDetection
             lock (_lock)
             {
                 _onsets.AddRange(o.Detections);
+                _amplitudes.AddRange(o.Amplitudes);
             }
 
             GC.Collect(2, GCCollectionMode.Forced, true);
@@ -310,5 +316,16 @@ namespace OnsetDetection
         CD,
         /// <summary>Rectified Complex Domain</summary>
         RCD
+    }
+
+    public struct Onset
+    {
+        public float OnsetTime;
+        public float OnsetAmplitude;
+
+        public override string ToString()
+        {
+            return string.Format("{0},{1}", OnsetTime, OnsetAmplitude);
+        }
     }
 }
