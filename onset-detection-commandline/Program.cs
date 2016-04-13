@@ -13,7 +13,7 @@ namespace OnsetDetection
     class Program
     {
         static object _lock;
-        static List<float> combinedOnsets;
+        static List<Onset> combinedOnsets;
 
         [STAThread]
         static void Main(string[] args)
@@ -22,7 +22,7 @@ namespace OnsetDetection
             if (of.ShowDialog() != DialogResult.OK) return;
             var file = of.FileName;
             _lock = new object();
-            combinedOnsets = new List<float>();
+            combinedOnsets = new List<Onset>();
 
             //TestSpeed(file);
             var options = DetectorOptions.Default;
@@ -32,7 +32,7 @@ namespace OnsetDetection
 
             combinedOnsets = onsets;
             GC.Collect(2, GCCollectionMode.Forced, true);
-            combinedOnsets = combinedOnsets.OrderBy(f => f).ToList();
+            combinedOnsets = combinedOnsets.OrderBy(f => f.OnsetTime).ToList();
             File.WriteAllLines("Strome - Papaoutai_onsets.csv", combinedOnsets.Select(f => f.ToString()).ToArray());
         }
 
