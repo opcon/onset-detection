@@ -103,7 +103,7 @@ namespace OnsetDetection
             //detections must be greater or equal than the moving average + threshold
             var mask = detections.Map2((d, mavg) => (d >= (mavg + threshold)) ? 1 : 0, movAvg);
             detections = detections.PointwiseMultiply(detections.Map2((d, mavg) => (d >= (mavg + threshold)) ? 1 : 0, movAvg));
-            var detectionAmplitudes = detections.Subtract(movAvg.Add(threshold)).PointwiseMultiply(mask);
+            var detectionAmplitudes = detections.PointwiseMultiply(mask);
             //convert detected onsets to a list of timestamps
             _lastOnset = lastOnset;
             for (int i = 0; i < detections.Count; i++)
