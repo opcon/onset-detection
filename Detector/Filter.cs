@@ -15,6 +15,7 @@ namespace OnsetDetection
     {
         int _fs;
         public Matrix<float> Filterbank;
+        MemoryAllocator _allocator;
 
         /// <summary>
         /// Creates a new Filter object instance
@@ -25,8 +26,10 @@ namespace OnsetDetection
         /// <param name="fmin">the minimum frequency [in Hz]</param>
         /// <param name="fmax">the maximum frequency [in Hz]</param>
         /// <param name="equal">normalize each band to equal energy</param>
-        public Filter(int ffts, int fs, int bands=12, float fmin=27.5f, float fmax=16000f, bool equal=false)
+        public Filter(int ffts, int fs, MemoryAllocator allocator, int bands=12, float fmin=27.5f, float fmax=16000f, bool equal=false)
         {
+            _allocator = allocator;
+
             //Samplerate
             _fs = fs;
             //reduce fmax if necessary
@@ -49,7 +52,8 @@ namespace OnsetDetection
             bands = sbins.Length - 2;
             Debug.Assert(bands >= 3, "cannot create filterbank with less than 3 frequencies");
             //init the filter matrix with size: ffts x filter bands
-            Filterbank = Matrix<float>.Build.Dense(ffts, bands);
+            Filterbank = _allocator.GetFloatMatrix(ffts, bands);
+            //Filterbank = Matrix<float>.Build.Dense(ffts, bands);
             //process all bands
             foreach (var band in Enumerable.Range(0,bands))
             {
@@ -99,7 +103,6 @@ namespace OnsetDetection
             frequencies.Sort();
             //return the list
             return frequencies.ToArray();
-            throw new System.NotImplementedException();
         }
 
         /// <summary>
@@ -124,7 +127,11 @@ namespace OnsetDetection
             PythonUtilities.SetArraySegment(PythonUtilities.Slice(triang_filter, mid - start, triang_filter.Length), NumpyCompatibility.LinSpace(height, 0, (stop - mid), false).ToArray());
             //return
             return triang_filter;
-            throw new System.NotImplementedException();
+        }
+
+        public void Cleanup()
+        {
+            _allocator.ReturnFloatMatrixStorage((MathNet.Numerics.LinearAlgebra.Storage.DenseColumnMajorMatrixStorage<float>)Filterbank.Storage);
         }
     }
 }

@@ -3,6 +3,7 @@ using CSCore.Codecs;
 using MathNet.Numerics.LinearAlgebra;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
@@ -70,25 +71,28 @@ namespace OnsetDetection
                 float[] buffer = new float[count * audio.WaveFormat.Channels];
                 audio.SetPosition(TimeConverter.SampleSourceTimeConverter.ToTimeSpan(audio.WaveFormat, adjustedStart * audio.WaveFormat.Channels));
                 audio.Read(buffer, 0, count * audio.WaveFormat.Channels);
-                wavSlices.Add(new Wav(buffer, audio.WaveFormat.SampleRate, count, audio.WaveFormat.Channels) { Delay = delay });
+                wavSlices.Add(new Wav(buffer, audio.WaveFormat.SampleRate, count, audio.WaveFormat.Channels) {
+                    Delay = delay,
+                    Padding = ((delay > 0) ? slicePaddingSize : 0) / audio.WaveFormat.SampleRate
+                });
             }
 
             int bucketSize = 5;
             int bucketcount = (int)Math.Ceiling((double)wavSlices.Count / bucketSize);
+            MemoryAllocator _allocator = new MemoryAllocator();
+
             for (int i = 0; i < bucketcount; i++)
             {
+                _allocator.Reset();
                 int count = bucketSize;
                 if ((i + 1) * bucketSize > wavSlices.Count) count = wavSlices.Count - i * bucketSize;
 
                 if (count < 0) continue;
 
                 List<Wav> parallel = wavSlices.GetRange(i * bucketSize, count);
-                var ploopResult = Parallel.ForEach(parallel, pOptions, (w, state) => GetOnsets(w));
+                var ploopResult = Parallel.ForEach(parallel, pOptions, (w, state) => GetOnsets(w, _allocator));
                 if (!ploopResult.IsCompleted) throw new Exception();
             }
-
-            //var pLoopResult = Parallel.ForEach<Wav>(wavSlices, pOptions, (w, state) => GetOnsets(w));
-            //if (!pLoopResult.IsCompleted) throw new Exception();
 
             onsets = _onsets.Zip(_amplitudes, (onset, amplitude) => new Onset { OnsetTime = onset, OnsetAmplitude = amplitude }).ToList();
             onsets = onsets.OrderBy(f => f.OnsetTime).ToList();
@@ -98,7 +102,7 @@ namespace OnsetDetection
             var ret = new List<Onset>();
             for (int i = 0; i < onsets.Count; i++)
             {
-                if (onsets[i].OnsetTime - prev < combine)
+                if (onsets[i].OnsetTime - prev < _options.MinimumTimeDelta / 1000.0f)
                     continue;
                 prev = onsets[i].OnsetTime;
                 ret.Add(onsets[i]);
@@ -106,17 +110,16 @@ namespace OnsetDetection
             return ret;
         }
 
-        private void GetOnsets(Wav w)
+        private void GetOnsets(Wav w, MemoryAllocator allocator)
         {
             //construct the spectrogram
-            var s = new Spectrogram(w, _options.WindowSize, _options.FPS, _options.Online, NeedPhaseInformation(_options.DetectionFunction));
+            var s = new Spectrogram(w, allocator, _options.WindowSize, _options.FPS, _options.Online, NeedPhaseInformation(_options.DetectionFunction));
 
             //perform adaptive whitening
             if (_options.AdaptiveWhitening) s.AW(_options.AWFloor, _options.AWRelax);
-            //s.AW();
 
             //construct the filterbank
-            var filt = new Filter(_options.WindowSize / 2, w.Samplerate);
+            var filt = new Filter(_options.WindowSize / 2, w.Samplerate, allocator);
 
             //filter the spectrogram
             s.Filter(filt.Filterbank);
@@ -125,23 +128,27 @@ namespace OnsetDetection
             if (_options.Log) s.Log(_options.LogMultiplier, _options.LogAdd);
 
             //calculate the activations
-            var sodf = new SpectralODF(s);
+            var sodf = new SpectralODF(s, allocator);
             var act = GetActivations(sodf, _options.DetectionFunction);
 
             //detect the onsets
             var o = new Onsets(act, _options.FPS);
             o.Detect(_options.ActivationThreshold, _options.MinimumTimeDelta,  delay: w.Delay * 1000);
+            var count = o.Detections.Count(f => f < (w.Delay + w.Padding));
 
             //add the onsets to the collection
             lock (_lock)
             {
-                _onsets.AddRange(o.Detections);
-                _amplitudes.AddRange(o.Amplitudes);
+                _onsets.AddRange(o.Detections.Skip(count));
+                _amplitudes.AddRange(o.Amplitudes.Skip(count));
             }
 
-            GC.Collect(2, GCCollectionMode.Forced, true);
             _completed++;
             ProgressReporter.Report(String.Format("{0}%", Math.Round((((float)_completed / _sliceCount))*100f)));
+
+            //cleanup
+            s.Cleanup();
+            filt.Cleanup();
         }
 
         private Vector<float> GetActivations(SpectralODF sODF, Detectors detectionFunction)
@@ -327,5 +334,13 @@ namespace OnsetDetection
         {
             return string.Format("{0},{1}", OnsetTime, OnsetAmplitude);
         }
+    }
+
+    public class OnsetHelper
+    {
+        public Spectrogram Spectrogram;
+        public Filter Filter;
+        public SpectralODF SprectralODF;
+        public Onsets Onsets;
     }
 }

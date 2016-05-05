@@ -16,6 +16,7 @@ namespace OnsetDetection
     {
         Spectrogram _s;
         int _diffFrames;
+        MemoryAllocator _allocator;
 
         /// <summary>
         /// Creates a new ODF object instance
@@ -23,9 +24,10 @@ namespace OnsetDetection
         /// <param name="spectogram">the spectrogram on which the detection functions operate</param>
         /// <param name="ratio">calculate the difference to the frame which has the given magnitude ratio</param>
         /// <param name="frames">calculate the difference to the N-th previous frame</param>
-        public SpectralODF(Spectrogram spectogram, float ratio=0.22f, int frames=0)
+        public SpectralODF(Spectrogram spectogram, MemoryAllocator allocator, float ratio=0.22f, int frames=0)
         {
             _s = spectogram;
+            _allocator = allocator;
             //determine the number of diff frames
             if (frames == 0)
             {
@@ -63,7 +65,8 @@ namespace OnsetDetection
         /// <param name="diffFrames">calculate the difference to the N-th previous frame</param>
         public Matrix<float> Diff(Matrix<float> spec, bool pos=false, int diffFrames=0)
         {
-            var diff = Matrix<float>.Build.SameAs(spec);
+            var diff = _allocator.GetFloatMatrix(spec.RowCount, spec.ColumnCount);
+            //var diff = Matrix<float>.Build.SameAs(spec);
             if (diffFrames == 0) diffFrames = _diffFrames;
             //calculate the diff
             var subMatrix = spec.SubMatrix(diffFrames, spec.RowCount - diffFrames, 0, spec.ColumnCount).Subtract(spec.SubMatrix(0, spec.RowCount - diffFrames, 0, spec.ColumnCount));

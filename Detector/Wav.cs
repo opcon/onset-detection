@@ -20,6 +20,7 @@ namespace OnsetDetection
         public int Channels { get; private set; }
         public Matrix<float> Audio { get; private set; }
         public float Delay { get; set; }
+        public float Padding { get; set; }
 
         /// <summary>
         /// Creates a new Wav object instance of the given file

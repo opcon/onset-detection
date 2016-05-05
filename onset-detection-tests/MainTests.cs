@@ -15,7 +15,7 @@ namespace OnsetDetection_tests
         [Fact]
         public void TestFilterBankProduction()
         {
-            var filterbankData = new Filter(1024, 44100).Filterbank.ToRowWiseArray();
+            var filterbankData = new Filter(1024, 44100, new MemoryAllocator()).Filterbank.ToRowWiseArray();
             //load test data
             var data = File.ReadAllLines("../../FilterbankData.csv").Select(a => float.Parse(a)).ToArray();
             for (int i = 0; i < data.Length; i++)

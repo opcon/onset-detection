@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -13,6 +14,7 @@ namespace OnsetDetection
     /// </summary>
     public class Spectrogram
     {
+        MemoryAllocator _allocator;
         Wav _wav;
         int _fps;
         public float HopSize;
@@ -32,8 +34,9 @@ namespace OnsetDetection
         /// <param name="fps">is the desired frame rate</param>
         /// <param name="online">work in online mode (i.e. use only past audio information)</param>
         /// <param name="phase">include phase information</param>
-        public Spectrogram(Wav wav, int windowSize=2048, int fps=200, bool online=true, bool phase=true)
+        public Spectrogram(Wav wav, MemoryAllocator allocator, int windowSize=2048, int fps=200, bool online=true, bool phase=true)
         {
+            _allocator = allocator;
             //init some variables
             _wav = wav;
             _fps = fps;
@@ -42,12 +45,22 @@ namespace OnsetDetection
             _frames = (int)(_wav.Samples / HopSize);
             _ffts = windowSize / 2;
             Bins = windowSize / 2; //initial number equal to ffts, can change if filters are used
+
             //init STFT matrix
-            _STFT = DenseMatrix.Create(_frames, _ffts, Complex32.Zero);
+            _STFT = _allocator.GetComplex32Matrix(_frames, _ffts);
+            //_STFT = DenseMatrix.Create(_frames, _ffts, Complex32.Zero);
+
             //create windowing function
             var cArray = wav.Audio.ToRowArrays()[0];
-            Window = Vector<float>.Build.DenseOfArray(MathNet.Numerics.Window.Hann(windowSize).Select(d => (float)d).ToArray());
+
+            var values = MathNet.Numerics.Window.Hann(windowSize).Select(d => (float)d).ToArray();
+            Window = _allocator.GetFloatVector(values.Length);
+            Window.SetValues(values);
+
+            //Window = Vector<float>.Build.DenseOfArray(MathNet.Numerics.Window.Hann(windowSize).Select(d => (float)d).ToArray());
+
             //step through all frames
+            System.Numerics.Complex[] result = new System.Numerics.Complex[Window.Count];
             foreach (var frame in Enumerable.Range(0, _frames))
             {
                 int seek;
@@ -67,23 +80,38 @@ namespace OnsetDetection
                 else if (seek + windowSize > _wav.Samples)
                 {
                     //stop behind the actual audio stop, append zeros accordingly
-                    var zeros = Vector<float>.Build.Dense(seek + windowSize - _wav.Samples, 0);
-                    var t = PythonUtilities.Slice<float>(cArray, seek, cArray.Length).ToList();
-                    t.AddRange(zeros.ToList());
-                    signal = Vector<float>.Build.DenseOfEnumerable(t);
+                    int zeroAmount = seek + windowSize - _wav.Samples;
+                    //var zeros = Vector<float>.Build.Dense(zeroAmount, 0);
+
+                    var t = PythonUtilities.Slice<float>(cArray, seek, cArray.Length).ToArray();
+
+                    //t.AddRange(zeros.ToList());
+
+                    signal = _allocator.GetFloatVector(t.Length + zeroAmount);
+                    signal.SetValues(t);
+                    //signal = Vector<float>.Build.DenseOfEnumerable(t);
                 }
                 else if (seek < 0)
                 {
                     //start before actual audio start, pad with zeros accordingly
-                    var zeros = Vector<float>.Build.Dense(-seek, 0).ToList();
-                    var t = PythonUtilities.Slice<float>(cArray, 0, seek + windowSize).ToList();
+                    int zeroAmount = -seek;
+                    var zeros = Vector<float>.Build.Dense(zeroAmount, 0).ToList();
+
+                    var t = PythonUtilities.Slice<float>(cArray, 0, seek + windowSize).ToArray();
                     zeros.AddRange(t);
-                    signal = Vector<float>.Build.DenseOfEnumerable(zeros);
+
+                    signal = _allocator.GetFloatVector(t.Length + zeroAmount);
+                    signal.SetValues(zeros.ToArray());
+                    //signal = Vector<float>.Build.DenseOfEnumerable(zeros);
                 }
                 else
                 {
                     //normal read operation
-                    signal = Vector<float>.Build.DenseOfEnumerable(PythonUtilities.Slice<float>(cArray, seek, seek + windowSize));
+                    var slice = PythonUtilities.Slice<float>(cArray, seek, seek + windowSize).ToArray();
+                    signal = _allocator.GetFloatVector(slice.Length);
+                    signal.SetValues(slice);
+
+                    //signal = Vector<float>.Build.DenseOfEnumerable(PythonUtilities.Slice<float>(cArray, seek, seek + windowSize));
                 }
                 //multiply the signal with the window function
                 signal = signal.PointwiseMultiply(Window);
@@ -94,22 +122,42 @@ namespace OnsetDetection
                     signal = NumpyCompatibility.FFTShift(signal);
                 }
                 //perform DFT
-                var result = signal.Map(f => (System.Numerics.Complex)f).ToArray();
+                //sanity check
+                Debug.Assert(result.Length == signal.Count);
+                for (int i = 0; i < result.Length; i++)
+                {
+                    result[i] = signal[i];
+                }
                 MathNet.Numerics.IntegralTransforms.Fourier.BluesteinForward(result, MathNet.Numerics.IntegralTransforms.FourierOptions.NoScaling);
-                //_STFT.SetRow(frame, result.Take(_ffts).ToArray());
-                var _newSTFTRow = result.Select(r => new Complex32((float)r.Real, (float)r.Imaginary)).Take(_ffts).ToArray();
-                _STFT.SetRow(frame, _newSTFTRow);
+                _STFT.SetRow(frame, result.Select(r => new Complex32((float)r.Real, (float)r.Imaginary)).Take(_ffts).ToArray());
+                //var _newSTFTRow = result.Select(r => new Complex32((float)r.Real, (float)r.Imaginary)).Take(_ffts).ToArray();
+                //_STFT.SetRow(frame, _newSTFTRow);
                 //next frame
+                _allocator.ReturnFloatVectorStorage((MathNet.Numerics.LinearAlgebra.Storage.DenseVectorStorage<float>)signal.Storage);
             }
             //magnitude spectrogram
-            Spec = _STFT.Map(c => (float)c.Magnitude);
-            //phase
+
+            Spec = _allocator.GetFloatMatrix(_STFT.RowCount, _STFT.ColumnCount);
             if (phase)
+                Phase = _allocator.GetFloatMatrix(_STFT.RowCount, _STFT.ColumnCount);
+            for (int i = 0; i < Spec.RowCount; i++)
             {
-                var imag = _STFT.Map(c => (float)c.Imaginary);
-                var real = _STFT.Map(c => (float)c.Real);
-                Phase = real.Map2((r, i) => (float)Math.Atan2(i,r), imag);
+                for (int j = 0; j < Spec.ColumnCount; j++)
+                {
+                    Spec.At(i, j, _STFT.At(i, j).Magnitude);
+                    if (phase)
+                        Phase.At(i, j, _STFT.At(i, j).Phase);
+                }
             }
+            //Spec = _STFT.Map(c => (float)c.Magnitude);
+
+            //phase
+            //if (phase)
+            //{
+            //    var imag = _STFT.Map(c => (float)c.Imaginary);
+            //    var real = _STFT.Map(c => (float)c.Real);
+            //    Phase = real.Map2((r, i) => (float)Math.Atan2(i,r), imag);
+            //}
         }
 
         /// <summary>
@@ -123,11 +171,15 @@ namespace OnsetDetection
         public void AW(float floor=5, float relaxation=10)
         {
             var memCoeff = (float)Math.Pow(10.0, (-6 * relaxation / _fps));
-            var P = Matrix<float>.Build.SameAs(Spec);
+            var P = _allocator.GetFloatMatrix(Spec.RowCount, Spec.ColumnCount);
+            //var P = Matrix<float>.Build.SameAs(Spec);
+
             //iterate over all frames
+            Vector<float> spec_floor = _allocator.GetFloatVector(Spec.ColumnCount);
+            //var spec_floor = Vector<float>.Build.Dense(Spec.ColumnCount);
             foreach (var f in Enumerable.Range(0, _frames))
             {
-                Vector<float> spec_floor = Vector<float>.Build.Dense(Spec.ColumnCount);
+                spec_floor.Clear();
                 for (int i = 0; i < Spec.ColumnCount; i++)
                 {
                     spec_floor[i] = Math.Max(Spec[f, i], floor);
@@ -143,6 +195,10 @@ namespace OnsetDetection
             }
             //adjust spec
             Spec = Spec.PointwiseDivide(P);
+
+            //cleanup
+            _allocator.ReturnFloatMatrixStorage((MathNet.Numerics.LinearAlgebra.Storage.DenseColumnMajorMatrixStorage<float>)P.Storage);
+            _allocator.ReturnFloatVectorStorage((MathNet.Numerics.LinearAlgebra.Storage.DenseVectorStorage<float>)spec_floor.Storage);
         }
 
         /// <summary>
@@ -152,13 +208,20 @@ namespace OnsetDetection
         /// <param name="Filterbank">Filter object which includes the filterbank</param>
         public void Filter(Matrix<float> filterbank = null)
         {
+            Filter f = null;
             if (filterbank == null)
+            {
                 //construct a standard filterbank
-                filterbank = new Filter(_ffts, _wav.Samplerate).Filterbank;
+                f = new Filter(_ffts, _wav.Samplerate, _allocator);
+                filterbank = f.Filterbank;
+            }
             //filter the magnitude spectrogram with the filterbank
             Spec = Spec.Multiply(filterbank);
             //adjust the number of bins
             Bins = Spec.ColumnCount;
+
+            //cleanup
+            if (f != null) f.Cleanup();
         }
 
         /// <summary>
@@ -170,6 +233,15 @@ namespace OnsetDetection
         {
             if (add <= 0) throw new Exception("a positive value must be added before taking the logarithm");
             Spec = Spec.Map(f => (float)Math.Log10(mul * f + add), Zeros.Include);
+        }
+
+        public void Cleanup()
+        {
+            _allocator.ReturnComplex32MatrixStorage((MathNet.Numerics.LinearAlgebra.Storage.DenseColumnMajorMatrixStorage<Complex32>)_STFT.Storage);
+            if (Phase != null) _allocator.ReturnFloatMatrixStorage((MathNet.Numerics.LinearAlgebra.Storage.DenseColumnMajorMatrixStorage<float>)Phase.Storage);
+            _allocator.ReturnFloatMatrixStorage((MathNet.Numerics.LinearAlgebra.Storage.DenseColumnMajorMatrixStorage<float>)Spec.Storage);
+            _allocator.ReturnFloatVectorStorage((MathNet.Numerics.LinearAlgebra.Storage.DenseVectorStorage<float>)Window.Storage);
+
         }
     }
 }

@@ -18,7 +18,7 @@ namespace OnsetDetection
         [STAThread]
         static void Main(string[] args)
         {
-            TestRobustness(@"D:\Patrick\Documents\Development\Game Related\onset-detection\Test Song");
+            TestRobustness(@"D:\Patrick\Documents\Development\Game Related\onset-detection\Test Song\One");
 
             //var of = new OpenFileDialog();
             //if (of.ShowDialog() != DialogResult.OK) return;
@@ -45,34 +45,36 @@ namespace OnsetDetection
         {
             var options = DetectorOptions.Default;
             options.ActivationThreshold = 10;
+            options.SliceLength = 10.0f;
+            options.SlicePaddingLength = 0.5f;
             var onsetDetector = new OnsetDetector(options, null);
             var files = Directory.GetFiles(testFolder).Where(f => ".mp3 .wav .flac".Contains(Path.GetExtension(f)));
-            //foreach (var f in files)
-            //{
-            //    var ext = Path.GetExtension(f);
-            //    var name = Path.GetFileNameWithoutExtension(f);
-            //    var onsetName = name + "_" + ext + "_onsets.csv";
-            //    var onsets = onsetDetector.Detect(f);
-            //    File.WriteAllLines(Path.Combine(testFolder, onsetName), onsets.Select(s => s.ToString()).ToArray());
-            //    Console.WriteLine("{0}: Sum - {1}, Average - {2}", name + "_" + ext, onsets.Sum(o => o.OnsetTime), onsets.Sum(o => o.OnsetTime) / onsets.Count);
-            //}
-
-            var allFiles = Directory.GetFiles(@"D:\Patrick\Music\My Music", "*.flac", SearchOption.AllDirectories);
-            int max = 100;
-            List<int> indicies = new List<int>();
-            List<string> testFiles = new List<string>();
-            var r = new Random();
-            for (int i = 0; i < max; i++)
+            foreach (var f in files)
             {
-                int index = r.Next(0, allFiles.Length);
-                indicies.Add(index);
-                testFiles.Add(allFiles[index]);
-            }
-            foreach (var f in testFiles)
-            {
+                var ext = Path.GetExtension(f);
+                var name = Path.GetFileNameWithoutExtension(f);
+                var onsetName = name + "_" + ext + "_onsets.csv";
                 var onsets = onsetDetector.Detect(f);
-                Console.WriteLine("{0}: Sum - {1}\tAverage - {2}", Path.GetFileNameWithoutExtension(f).PadRight(20).Substring(0,20), onsets.Sum(o => o.OnsetTime), onsets.Sum(o => o.OnsetTime) / onsets.Count);
+                File.WriteAllLines(Path.Combine(testFolder, onsetName), onsets.Select(s => s.ToString()).ToArray());
+                Console.WriteLine("{0}: Sum - {1}, Average - {2}", name + "_" + ext, onsets.Sum(o => o.OnsetTime), onsets.Sum(o => o.OnsetTime) / onsets.Count);
             }
+
+            //var allFiles = Directory.GetFiles(@"D:\Patrick\Music\My Music", "*.flac", SearchOption.AllDirectories);
+            //int max = 100;
+            //List<int> indicies = new List<int>();
+            //List<string> testFiles = new List<string>();
+            //var r = new Random();
+            //for (int i = 0; i < max; i++)
+            //{
+            //    int index = r.Next(0, allFiles.Length);
+            //    indicies.Add(index);
+            //    testFiles.Add(allFiles[index]);
+            //}
+            //foreach (var f in testFiles)
+            //{
+            //    var onsets = onsetDetector.Detect(f);
+            //    Console.WriteLine("{0}: Sum - {1}\tAverage - {2}", Path.GetFileNameWithoutExtension(f).PadRight(20).Substring(0,20), onsets.Sum(o => o.OnsetTime), onsets.Sum(o => o.OnsetTime) / onsets.Count);
+            //}
         }
 
         public static void TestSpeed(string file)
