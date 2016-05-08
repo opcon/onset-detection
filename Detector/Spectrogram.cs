@@ -88,7 +88,11 @@ namespace OnsetDetection
                     //t.AddRange(zeros.ToList());
 
                     signal = _allocator.GetFloatVector(t.Length + zeroAmount);
-                    signal.SetValues(t);
+                    for (int i = 0; i < t.Length; i++)
+                    {
+                        signal[i] = t[i];
+                    }
+                    //signal.SetValues(t);
                     //signal = Vector<float>.Build.DenseOfEnumerable(t);
                 }
                 else if (seek < 0)
