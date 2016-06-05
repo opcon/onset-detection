@@ -47,6 +47,7 @@ namespace OnsetDetection
             options.ActivationThreshold = 10;
             options.SliceLength = 10.0f;
             options.SlicePaddingLength = 0.5f;
+            options.Online = false;
             var onsetDetector = new OnsetDetector(options, null);
             var files = Directory.GetFiles(testFolder).Where(f => ".mp3 .wav .flac".Contains(Path.GetExtension(f)));
             foreach (var f in files)
@@ -57,6 +58,7 @@ namespace OnsetDetection
                 var onsets = onsetDetector.Detect(f);
                 File.WriteAllLines(Path.Combine(testFolder, onsetName), onsets.Select(s => s.ToString()).ToArray());
                 Console.WriteLine("{0}: Sum - {1}, Average - {2}", name + "_" + ext, onsets.Sum(o => o.OnsetTime), onsets.Sum(o => o.OnsetTime) / onsets.Count);
+                Console.WriteLine(onsets.Count);
             }
 
             //var allFiles = Directory.GetFiles(@"D:\Patrick\Music\My Music", "*.flac", SearchOption.AllDirectories);
