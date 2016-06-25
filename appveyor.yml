@@ -4,7 +4,7 @@ configuration:
 - Debug
 - Release
 before_build:
-- cmd: nuget restore
+- cmd: nuget restore onset-detection.sln
 build:
   project: onset-detection.sln
   publish_nuget: true
