@@ -1,7 +1,11 @@
-# OnsetDetection
-A C# onset detection library that implements a C# version of the python code found at https://github.com/CPJKU/onset_detection/blob/master/onset_program.py
+OnsetDetection [![Build Status](https://travis-ci.org/opcon/onset-detection.svg?branch=master)](https://travis-ci.org/opcon/onset-detection) [![Build status](https://ci.appveyor.com/api/projects/status/kpw3ua7euxwx4u08?svg=true)](https://ci.appveyor.com/project/opcon/onset-detection)
+====
 
-# Citations
+A C# audio onset detection library.
+
+Based on the python code found at https://github.com/CPJKU/onset_detection/blob/master/onset_program.py
+
+### Citations
 This code is an implementation of the method described in the following paper:
 
 "Evaluating the Online Capabilities of Onset Detection Methods"
@@ -9,9 +13,9 @@ by Sebastian Böck, Florian Krebs and Markus Schedl
 in Proceedings of the 13th International Society for Music Information
 Retrieval Conference (ISMIR), 2012.
 
-# License
+### License
 
-## The license for the original python code from which this implementation was adapted is reproduced below:
+#### The license for the original python code from which this implementation was adapted is reproduced below:
 
 Copyright (c) 2012, 2013 Sebastian Böck <sebastian.boeck@jku.at>
 All rights reserved.
@@ -33,11 +37,11 @@ ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-## This code is licensed under the following:
+#### This code is licensed under the following:
 
 The MIT License (MIT)
 
-Copyright (c) 2015 Patrick Yates
+Copyright (c) 2016 Patrick Yates
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
